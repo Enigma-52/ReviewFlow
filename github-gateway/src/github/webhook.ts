@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import crypto from "crypto";
+import { enqueueReviewJob } from "../queue/reviewQueue";
 
 export function verifyGithubSignature(
   body: string,
@@ -21,7 +22,7 @@ export function verifyGithubSignature(
   }
 }
 
-export function githubWebhookHandler(req: Request, res: Response) {
+export async function githubWebhookHandler(req: Request, res: Response) {
   const signature = req.headers["x-hub-signature-256"] as string | undefined;
   const event = req.headers["x-github-event"] as string | undefined;
   const body = req.body as string;
@@ -47,7 +48,9 @@ export function githubWebhookHandler(req: Request, res: Response) {
         action: payload.action,
       };
 
-      console.log("Enqueue PR Job:", job);
+      await enqueueReviewJob(job);
+      console.log("Enqueued PR Job:", job);
+
 
       return res.json({ received: true, job });
     }
