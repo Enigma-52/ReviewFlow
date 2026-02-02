@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import crypto from "crypto";
 import { enqueueReviewJob } from "../queue/reviewQueue";
+import { pool } from "../db/db";
 
 export function verifyGithubSignature(
   body: string,
@@ -34,6 +35,26 @@ export async function githubWebhookHandler(req: Request, res: Response) {
 
   if (event === "pull_request") {
     const payload = JSON.parse(body);
+    const installationId = payload.installation?.id;
+
+    if (!installationId) {
+      console.error("Missing installation_id in webhook");
+      return res.status(400).json({ error: "Missing installation_id" });
+    }
+
+    // Persist installation mapping (id → owner/repo)
+    await pool.query(
+      `
+      INSERT INTO installations (id, owner, repo)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (id) DO NOTHING
+      `,
+      [
+        installationId,
+        payload.repository.owner.login,
+        payload.repository.name,
+      ]
+    );
 
     if (
       payload.action === "opened" ||
@@ -43,6 +64,7 @@ export async function githubWebhookHandler(req: Request, res: Response) {
         prId: payload.pull_request.number,
         repo: payload.repository.name,
         owner: payload.repository.owner.login,
+        installationId,              // <-- NEW
         baseSha: payload.pull_request.base.sha,
         headSha: payload.pull_request.head.sha,
         action: payload.action,
@@ -51,8 +73,7 @@ export async function githubWebhookHandler(req: Request, res: Response) {
       await enqueueReviewJob(job);
       console.log("Enqueued PR Job:", job);
 
-
-      return res.json({ received: true, job });
+      return res.json({ received: true });
     }
   }
 
