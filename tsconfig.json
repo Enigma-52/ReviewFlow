@@ -1,0 +1,13 @@
+{
+  // Visit https://aka.ms/tsconfig to read more about this file
+  "compilerOptions": {
+  "module": "commonjs",
+  "moduleResolution": "node",
+  "esModuleInterop": true,
+  "verbatimModuleSyntax": false,
+  "target": "es2020",
+  "rootDir": "src",
+  "outDir": "dist",
+  "strict": true
+  }
+}
