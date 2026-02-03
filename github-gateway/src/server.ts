@@ -1,10 +1,8 @@
 import { createApp } from "./app";
 import { githubWebhookHandler } from "./github/webhook";
 import express from "express";
-import dotenv from "dotenv";
 import { initDb } from "./db/db";
-
-dotenv.config();
+import { config } from "./config";
 
 const app = createApp();
 
@@ -15,13 +13,11 @@ app.use(
   githubWebhookHandler
 );
 
-const PORT = Number(process.env.PORT) || 3000;
-
 (async () => {
   try {
     await initDb(); // <-- moved inside async block
-    app.listen(PORT, () => {
-      console.log(`ReviewFlow Gateway running on port ${PORT}`);
+    app.listen(config.port, () => {
+      console.log(`ReviewFlow Gateway running on port ${config.port}`);
     });
   } catch (err) {
     console.error("Failed to initialize DB:", err);

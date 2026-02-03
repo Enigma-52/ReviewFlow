@@ -1,12 +1,7 @@
 import { Pool } from "pg";
+import { config } from "../config";
 
-export const pool = new Pool({
-  host: "localhost",
-  port: 5432,
-  database: "reviewflow",
-  user: "reviewflow",
-  password: "reviewflow",
-});
+export const pool = new Pool(config.db);
 
 export async function initDb() {
   await pool.query(`

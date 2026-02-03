@@ -2,9 +2,10 @@ import { Request, Response } from "express";
 import crypto from "crypto";
 import { enqueueReviewJob } from "../queue/reviewQueue";
 import { pool } from "../db/db";
+import { config } from "../config";
 
 export function verifyGithubSignature(
-  body: string,
+  body: Buffer,
   signature: string | undefined,
   secret: string
 ): boolean {
@@ -26,15 +27,15 @@ export function verifyGithubSignature(
 export async function githubWebhookHandler(req: Request, res: Response) {
   const signature = req.headers["x-hub-signature-256"] as string | undefined;
   const event = req.headers["x-github-event"] as string | undefined;
-  const body = req.body as string;
+  const body = req.body as Buffer;
 
-  const secret = process.env.WEBHOOK_SECRET!;
+  const secret = config.webhookSecret;
   if (!verifyGithubSignature(body, signature, secret)) {
     return res.status(401).json({ error: "Invalid signature" });
   }
 
   if (event === "pull_request") {
-    const payload = JSON.parse(body);
+    const payload = JSON.parse(body.toString("utf8"));
     const installationId = payload.installation?.id;
 
     if (!installationId) {
