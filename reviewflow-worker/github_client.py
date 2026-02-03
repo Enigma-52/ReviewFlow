@@ -2,6 +2,8 @@ import time
 import jwt  # pyjwt
 import requests
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Dict, Tuple
 from config import Settings
 
 
@@ -14,6 +16,7 @@ def load_private_key(private_key_path: str) -> str:
 class GitHubAppClient:
     settings: Settings
     private_key: str
+    token_cache: Dict[int, Tuple[str, float]]
 
     def generate_app_jwt(self) -> str:
         now = int(time.time())
@@ -25,6 +28,12 @@ class GitHubAppClient:
         return jwt.encode(payload, self.private_key, algorithm="RS256")
 
     def get_installation_token(self, installation_id: int) -> str:
+        cached = self.token_cache.get(installation_id)
+        if cached:
+            token, expires_at = cached
+            if time.time() < expires_at:
+                return token
+
         app_jwt = self.generate_app_jwt()
         url = (
             f"{self.settings.github_api_base}/app/installations/"
@@ -37,7 +46,13 @@ class GitHubAppClient:
         resp = requests.post(url, headers=headers)
         resp.raise_for_status()
         data = resp.json()
-        return data["token"]
+        token = data["token"]
+        expires_at = data.get("expires_at")
+        if expires_at:
+            expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            expires_epoch = expires_dt.replace(tzinfo=timezone.utc).timestamp()
+            self.token_cache[installation_id] = (token, expires_epoch - 60)
+        return token
 
     def fetch_pr_diff(
         self, owner: str, repo: str, pr_id: int, installation_id: int

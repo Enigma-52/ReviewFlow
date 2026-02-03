@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import crypto from "crypto";
 import { enqueueReviewJob } from "../queue/reviewQueue";
-import { pool } from "../db/db";
 import { config } from "../config";
+import { handlePullRequestEvent } from "../services/webhookService";
 
 export function verifyGithubSignature(
   body: Buffer,
@@ -27,56 +27,52 @@ export function verifyGithubSignature(
 export async function githubWebhookHandler(req: Request, res: Response) {
   const signature = req.headers["x-hub-signature-256"] as string | undefined;
   const event = req.headers["x-github-event"] as string | undefined;
+  const deliveryId = req.headers["x-github-delivery"] as string | undefined;
   const body = req.body as Buffer;
+
+  if (!event) {
+    return res.status(400).json({ error: "Missing X-GitHub-Event header" });
+  }
 
   const secret = config.webhookSecret;
   if (!verifyGithubSignature(body, signature, secret)) {
     return res.status(401).json({ error: "Invalid signature" });
   }
 
-  if (event === "pull_request") {
-    const payload = JSON.parse(body.toString("utf8"));
-    const installationId = payload.installation?.id;
-
-    if (!installationId) {
-      console.error("Missing installation_id in webhook");
-      return res.status(400).json({ error: "Missing installation_id" });
-    }
-
-    // Persist installation mapping (id → owner/repo)
-    await pool.query(
-      `
-      INSERT INTO installations (id, owner, repo)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (id) DO NOTHING
-      `,
-      [
-        installationId,
-        payload.repository.owner.login,
-        payload.repository.name,
-      ]
-    );
-
-    if (
-      payload.action === "opened" ||
-      payload.action === "synchronize"
-    ) {
-      const job = {
-        prId: payload.pull_request.number,
-        repo: payload.repository.name,
-        owner: payload.repository.owner.login,
-        installationId,              // <-- NEW
-        baseSha: payload.pull_request.base.sha,
-        headSha: payload.pull_request.head.sha,
-        action: payload.action,
-      };
-
-      await enqueueReviewJob(job);
-      console.log("Enqueued PR Job:", job);
-
-      return res.json({ received: true });
-    }
+  if (event === "ping") {
+    return res.json({ ok: true });
   }
 
-  return res.json({ ignored: true });
+  if (event !== "pull_request") {
+    return res.status(202).json({ ignored: true });
+  }
+
+  const payload = JSON.parse(body.toString("utf8"));
+
+  try {
+    const result = await handlePullRequestEvent({
+      payload,
+      eventType: event,
+      deliveryId,
+    });
+
+    if (result.status === "ignored") {
+      return res.status(202).json({ ignored: true });
+    }
+
+    if (result.status === "closed") {
+      return res.json({ received: true, status: "closed" });
+    }
+
+    if (result.job) {
+      await enqueueReviewJob(result.job);
+      console.log("Enqueued PR Job:", result.job);
+    }
+
+    return res.json({ received: true });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to process webhook";
+    return res.status(400).json({ error: message });
+  }
 }

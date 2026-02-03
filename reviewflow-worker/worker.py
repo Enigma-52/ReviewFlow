@@ -8,7 +8,11 @@ from processor import process_job
 def main() -> None:
     redis_conn = Redis.from_url(settings.redis_url)
     private_key = load_private_key(settings.github_private_key_path)
-    client = GitHubAppClient(settings=settings, private_key=private_key)
+    client = GitHubAppClient(
+        settings=settings,
+        private_key=private_key,
+        token_cache={},
+    )
 
     print("ReviewFlow Python Worker started...")
 

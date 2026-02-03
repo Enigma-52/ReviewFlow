@@ -1,8 +1,10 @@
 import { createApp } from "./app";
 import { githubWebhookHandler } from "./github/webhook";
 import express from "express";
-import { initDb } from "./db/db";
+import { initDb } from "./db/dao";
 import { config } from "./config";
+import { apiRouter } from "./routes/api";
+import { errorHandler } from "./middleware/errorHandler";
 
 const app = createApp();
 
@@ -12,6 +14,9 @@ app.use(
   express.raw({ type: "application/json" }),
   githubWebhookHandler
 );
+
+app.use("/api", express.json(), apiRouter);
+app.use(errorHandler);
 
 (async () => {
   try {

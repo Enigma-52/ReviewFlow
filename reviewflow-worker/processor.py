@@ -1,6 +1,7 @@
 import json
 from phase_a import run_phase_a
 from github_client import GitHubAppClient
+from dao import append_task_log, upsert_review_result, update_task_status
 
 
 def process_job(job: dict, client: GitHubAppClient) -> None:
@@ -26,6 +27,51 @@ def process_job(job: dict, client: GitHubAppClient) -> None:
         )
 
     phase_a_output = run_phase_a(diff, fetch_file_from_github)
+
+    result_payload = {
+        "file_diffs": [
+            {
+                "path": fd.path,
+                "hunks": [
+                    {
+                        "start_line": hunk.start_line,
+                        "added": hunk.added,
+                        "removed": hunk.removed,
+                    }
+                    for hunk in fd.hunks
+                ],
+            }
+            for fd in phase_a_output["file_diffs"]
+        ],
+        "symbols_map": phase_a_output["symbols_map"],
+        "risk_summary": phase_a_output["risk_summary"],
+    }
+
+    upsert_review_result(
+        task_id=job.get("taskId"),
+        owner=job["owner"],
+        repo=job["repo"],
+        pr_number=job["prId"],
+        head_sha=job["headSha"],
+        phase="phase_a",
+        result=result_payload,
+    )
+
+    update_task_status(job.get("taskId"), "completed")
+
+    append_task_log(
+        task_id=job.get("taskId"),
+        event_type="analysis_completed",
+        action=job.get("action"),
+        status="completed",
+        payload={
+            "owner": job["owner"],
+            "repo": job["repo"],
+            "pr_number": job["prId"],
+            "head_sha": job["headSha"],
+            "phase": "phase_a",
+        },
+    )
 
     print("\n=== Phase A Output ===")
 
