@@ -1,6 +1,7 @@
 # ReviewFlow
 
 ReviewFlow is split into two small services:
+
 1. `github-gateway`: Express webhook receiver that validates GitHub signatures, stores installation mappings, and enqueues PR review jobs in Redis.
 
 2. `reviewflow-worker`: Python worker that pulls jobs from Redis, fetches diffs/files from GitHub using the App installation token, and runs Phase A analysis.
